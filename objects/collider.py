@@ -11,7 +11,7 @@ class CollisionDetector:
     Simplified Monte Carlo simulator for particle tracks and detector hits.
     """
 
-    def __init__(self, n_layers=5, r_min=1.0, r_max=5.0, n_tracks=10, random_seed=42):
+    def __init__(self, n_layers=5, r_min=1.0, r_max=10.0, n_tracks=10, random_seed=42):
         """
         Parameters
         ----------
@@ -80,7 +80,7 @@ class CollisionDetector:
 
         return all_hits
 
-    def plot_event(self, hits, filename, color_by_track=False):
+    def plot_event(self, hits, filename, color_by_track=True):
         """
         Quick visualization: detector circles + hits, optionally colored by track_id.
         """

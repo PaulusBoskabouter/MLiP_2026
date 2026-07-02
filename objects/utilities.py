@@ -135,7 +135,7 @@ def train_model(
 
 def test_model(model, test_loader, device="cpu"):
     model.eval()
-
+    model = model.to(device)
     criterion = torch.nn.BCEWithLogitsLoss()
 
     running_loss = 0
@@ -187,10 +187,9 @@ def get_predicted_clusters(edge_index, pred_edges, num_nodes):
     return node_to_cluster
 
 
-def visual_example(model, graph, sample_hits, radii, device="cpu"):
+def visual_example(model, graph, sample_hits, radii, device):
     graph = next(iter(graph))
     hits = sample_hits[0]
-
     graph = graph.to(device)
 
     logits = model(graph)
