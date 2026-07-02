@@ -80,7 +80,7 @@ class CollisionDetector:
 
         return all_hits
 
-    def plot_event(self, hits, color_by_track=False):
+    def plot_event(self, hits, filename, color_by_track=False):
         """
         Quick visualization: detector circles + hits, optionally colored by track_id.
         """
@@ -111,10 +111,10 @@ class CollisionDetector:
         ax.set_ylim(-self.radii[-1] * 1.2, self.radii[-1] * 1.2)
         ax.set_aspect("equal")
         ax.legend()
-        plt.savefig(Path("results") / "example.png")
+        plt.savefig(Path("results") / f"{filename}.png")
         return fig, ax
 
-    def histogram_dataset(self, dataset):
+    def histogram_dataset(self, dataset, filename):
         all_hits = []
         all_phis = []
         for event in dataset:  # dataset is your list of TrackHit lists
@@ -135,9 +135,9 @@ class CollisionDetector:
         axes[2].hist(all_phis, bins=100)
         axes[2].set_title("Hit phi distribution")
         plt.tight_layout()
-        plt.savefig(Path("results") / "distribution.png")
+        plt.savefig(Path("results") / f"{filename}.png")
 
-    def generate_dataset(self, n_events=10_000):
+    def generate_dataset(self, n_events=10000):
         events = []
         for _ in range(n_events):
             hits = self.generate_event()
