@@ -1,2 +1,3 @@
 .venv/*
 .python-version
+objects/__pycache__/*
