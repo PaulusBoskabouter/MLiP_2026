@@ -54,7 +54,6 @@ def build_graph(
         return torch.zeros(0, 5), torch.zeros(2, 0, dtype=torch.long), torch.zeros(0)
 
     # --- node feature arrays ---
-    ids = [h.id for h in event]
     xs = np.array([h.x for h in event])
     ys = np.array([h.y for h in event])
     phis = np.array([h.phi for h in event])
@@ -63,23 +62,19 @@ def build_graph(
 
     r = np.sqrt(xs**2 + ys**2)
     r_max = r.max() if r.max() > 0 else 1.0
-    r_safe = np.where(r > 0, r, 1.0)
-    unit_xy = np.stack([xs, ys], axis=1) / r_safe[:, None]  # (N, 2)
 
-    ring_max = rings.max() if rings.max() > 0 else 1
     node_features = np.stack(
         [
             xs / r_max,  # x normalised
             ys / r_max,  # y normalised
-            r / r_max,  # radius normalised
-            phis / np.pi,  # phi ∈ [-1, 1]
-            rings / ring_max,  # layer ∈ [0, 1]
+            # r / r_max,  # radius normalised
+            # phis / np.pi,  # phi ∈ [-1, 1]
+            # rings / ring_max,  # layer ∈ [0, 1]
         ],
         axis=1,
     ).astype(np.float32)
 
     # --- index map and ring lookup ---
-    id_to_idx = {hid: idx for idx, hid in enumerate(ids)}
     ring_to_idxs = defaultdict(list)
     for idx, r_val in enumerate(rings):
         ring_to_idxs[int(r_val)].append(idx)

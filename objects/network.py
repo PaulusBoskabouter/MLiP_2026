@@ -19,7 +19,7 @@ class GraphNeuralNet(nn.Module):
         self.train_f1 = []
         self.val_f1 = []
 
-        self.conv1 = SAGEConv(5, 32)
+        self.conv1 = SAGEConv(2, 32)
         self.conv2 = SAGEConv(32, 32)
         self.conv3 = SAGEConv(32, 32)
 
