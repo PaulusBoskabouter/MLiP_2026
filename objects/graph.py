@@ -36,19 +36,13 @@ class TrackHit:
         self.ring = ring
 
 
-def build_graph(
-    event: list, k: int = 3, max_ring_skip: int = 2, dot_threshold: float = 0.5
-):
+def build_graph(event: list, k: int = 3, max_ring_skip: int = 2):
     """
     Parameters
     ----------
     k              : k-nearest neighbours by phi per direction per source hit
     max_ring_skip  : look up to this many rings away in each direction.
                         1 = only adjacent rings; 2 = handles single missed hits.
-    dot_threshold  : prune edges where dot(û_i, û_j) < threshold.
-                        Guards against connecting hits pointing in opposite
-                        directions.  0.5 ≈ ±60°, loose sanity cut only.
-                        Set higher (0.95+) if you want a tighter angular gate.
     """
     if not event:
         return torch.zeros(0, 5), torch.zeros(2, 0, dtype=torch.long), torch.zeros(0)
@@ -67,9 +61,6 @@ def build_graph(
         [
             xs / r_max,  # x normalised
             ys / r_max,  # y normalised
-            # r / r_max,  # radius normalised
-            # phis / np.pi,  # phi ∈ [-1, 1]
-            # rings / ring_max,  # layer ∈ [0, 1]
         ],
         axis=1,
     ).astype(np.float32)
@@ -91,10 +82,6 @@ def build_graph(
             for skip in range(1, max_ring_skip + 1):
                 target_ring = h.ring + direction * skip
                 for j in ring_to_idxs.get(target_ring, []):
-                    # Dot product gate (loose sanity cut)
-                    # if np.dot(unit_xy[i], unit_xy[j]) < dot_threshold:
-                    #     continue
-
                     d = abs(phis[i] - phis[j])
                     d = min(d, 2 * np.pi - d)
                     cand_idxs.append(j)

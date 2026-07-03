@@ -13,17 +13,19 @@ from objects.graph import build_graph
 
 
 class HitDataset(Dataset):
-    def __init__(self, events):
-        self.events = events
+    def __init__(self, events, desc="Dataset"):
+        self.data = []
+        for hits in tqdm(events, desc=f"Building graphs ({desc})"):
+            node_features, edge_index, edge_labels = build_graph(hits)
+            self.data.append(
+                Data(x=node_features, edge_index=edge_index, edge_label=edge_labels)
+            )
 
     def __len__(self):
-        return len(self.events)
+        return len(self.data)
 
     def __getitem__(self, idx):
-        hits = self.events[idx]
-        node_features, edge_index, edge_labels = build_graph(hits)
-
-        return Data(x=node_features, edge_index=edge_index, edge_label=edge_labels)
+        return self.data[idx]
 
 
 def train_model(
@@ -114,10 +116,10 @@ def train_model(
             best_val_loss = val_loss
             epochs_no_improve = 0
             model.save()
-        elif epochs_no_improve >= patience:
-            break
         else:
             epochs_no_improve += 1
+            if epochs_no_improve >= patience:
+                break
 
         logs = f"Epoch [{epoch + 1:3d}/{epochs}] | Train loss: {train_loss:.5f} | Val loss {val_loss:.5f} | Best loss: {best_val_loss:.5f}| Train f1 {train_f1:.5f} | Val f1 {val_f1:.5f} | Patience: [{epochs_no_improve:2d}/{patience}]\n"
         with open(Path("models") / f"{model.name}.txt", "a") as file:
@@ -126,7 +128,7 @@ def train_model(
         pbar.set_postfix(
             train_loss=f"{train_loss:.5f}",
             val_loss=f"{val_loss:.5f}",
-            best_loss="{best_val_loss:.5f}",
+            best_loss=f"{best_val_loss:.5f}",
             patience=f"[{epochs_no_improve:2d}/{patience}]",
         )
 

@@ -4,6 +4,7 @@ from pathlib import Path
 import pandas as pd
 import torch
 from sklearn.model_selection import train_test_split
+from torch_geometric.loader import DataLoader
 
 from objects.collider import CollisionDetector, TrackHit
 from objects.network import GraphNeuralNet
@@ -12,7 +13,7 @@ from objects.utilities import HitDataset, test_model, train_model, visual_exampl
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 
-def model_linear_tracks(seed, train, epochs, lr, patience, n_tracks):
+def model_linear_tracks(seed, train, epochs, lr, patience, batch_size, n_tracks):
     detector = CollisionDetector(
         n_layers=5, r_min=1.0, r_max=6.0, n_tracks=n_tracks, random_seed=seed
     )
@@ -48,17 +49,23 @@ def model_linear_tracks(seed, train, epochs, lr, patience, n_tracks):
         shuffle=True,
     )
 
-    train_loader = HitDataset(train_data)
-    val_loader = HitDataset(val_data)
-    test_loader = HitDataset(test_data)
+    train_dataset = HitDataset(train_data, desc="train")
+    val_dataset = HitDataset(val_data, desc="validation")
+    test_dataset = HitDataset(test_data, desc="test")
+
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+
     print(
         "Training the model with following parameters:"
-        + f"\n\tepochs:\t{patience}"
-        + f"\n\tlearning rate:\t{patience}"
+        + f"\n\tepochs:\t{epochs}"
+        + f"\n\tlearning rate:\t{lr}"
         + f"\n\tpatience:\t{patience}"
-        + f"\n\ttrain sample count:\t{len(train_loader)}"
-        + f"\n\tval sample count:\t{len(val_loader)}"
-        + f"\n\ttest sample count:\t{len(test_loader)}"
+        + f"\n\tbatch size:\t{batch_size}"
+        + f"\n\ttrain sample count:\t{len(train_dataset)}"
+        + f"\n\tval sample count:\t{len(val_dataset)}"
+        + f"\n\ttest sample count:\t{len(test_dataset)}"
         + f"\n\tdevice:\t{device}\n"
     )
     model = GraphNeuralNet(name=f"GNN_part_1_{n_tracks}_tracks")
@@ -92,7 +99,7 @@ def model_linear_tracks(seed, train, epochs, lr, patience, n_tracks):
     print("=" * 100)
 
 
-def model_curved_tracks(seed, train, epochs, lr, patience):
+def model_curved_tracks(seed, train, epochs, lr, patience, batch_size):
     print("Loading data from 'hits_FINAL.csv'")
 
     df = pd.read_csv("hits_FINAL.csv")
@@ -101,9 +108,8 @@ def model_curved_tracks(seed, train, epochs, lr, patience):
 
     events = []
 
-    node_id = 0
-
     for event in events_ids:
+        node_id = 0
         hits = []
         event_hits = df.loc[df["event_id"] == event]
         for __, hit in event_hits.iterrows():
@@ -134,18 +140,23 @@ def model_curved_tracks(seed, train, epochs, lr, patience):
         shuffle=True,
     )
 
-    train_loader = HitDataset(train_data)
-    val_loader = HitDataset(val_data)
-    test_loader = HitDataset(test_data)
+    train_dataset = HitDataset(train_data, desc="train")
+    val_dataset = HitDataset(val_data, desc="validation")
+    test_dataset = HitDataset(test_data, desc="test")
+
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
 
     print(
         "Training the model with following parameters:"
-        + f"\n\tepochs:\t{patience}"
-        + f"\n\tlearning rate:\t{patience}"
+        + f"\n\tepochs:\t{epochs}"
+        + f"\n\tlearning rate:\t{lr}"
         + f"\n\tpatience:\t{patience}"
-        + f"\n\ttrain sample count:\t{len(train_loader)}"
-        + f"\n\tval sample count:\t{len(val_loader)}"
-        + f"\n\ttest sample count:\t{len(test_loader)}"
+        + f"\n\tbatch size:\t{batch_size}"
+        + f"\n\ttrain sample count:\t{len(train_dataset)}"
+        + f"\n\tval sample count:\t{len(val_dataset)}"
+        + f"\n\ttest sample count:\t{len(test_dataset)}"
         + f"\n\tdevice:\t{device}\n"
     )
 
@@ -188,9 +199,10 @@ if __name__ == "__main__":
     epochs = 1000
     lr = 0.001
     patience = 15
+    batch_size = 32
 
     # Training and evaluating the model with 10 tracks
-    model_linear_tracks(seed, train, epochs, lr, patience, n_tracks=10)
+    model_linear_tracks(seed, train, epochs, lr, patience, batch_size, n_tracks=10)
     # Training and evaluating the model with 50 tracks
-    model_linear_tracks(seed, train, epochs, lr, patience, n_tracks=50)
-    model_curved_tracks(seed, train, epochs, lr, patience)
+    model_linear_tracks(seed, train, epochs, lr, patience, batch_size, n_tracks=50)
+    model_curved_tracks(seed, train, epochs, lr, patience, batch_size)

@@ -9,6 +9,10 @@ from torch_geometric.nn import SAGEConv
 
 
 class GraphNeuralNet(nn.Module):
+    """
+    The graph neural network object. Name says it all honestly.
+    """
+
     def __init__(self, name):
         super().__init__()
         self.name = name
@@ -26,6 +30,15 @@ class GraphNeuralNet(nn.Module):
         self.edge_mlp = nn.Sequential(nn.Linear(64, 32), nn.ReLU(), nn.Linear(32, 1))
 
     def forward(self, graph):
+        """
+        Forward pass. Stuff goes, stuff goes out, you now how it is.
+
+        Parameters
+        ----------
+        graph : torch_geometric.data.Data
+            torch geometrical data object containing node features (x), edge indexes (edge_index), and edge labels (edge_labels)
+
+        """
         x = graph.x
         edge_index = graph.edge_index
         x = F.relu(self.conv1(x, edge_index))
@@ -40,11 +53,7 @@ class GraphNeuralNet(nn.Module):
 
     def save(self):
         """
-        Short function that allows saving of the current state
-
-        Args:
-            filepath: pretty self explanatory, refers to the directory
-            filename: pretty self explanatory, refers to the actual filename with extention
+        Short function to save the object
         """
         torch.save(
             {
