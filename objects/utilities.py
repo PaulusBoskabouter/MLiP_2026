@@ -5,15 +5,33 @@ import networkx as nx
 import numpy as np
 import torch
 from sklearn.metrics import f1_score
-from torch.utils.data import Dataset
+from torch.utils.data import DataLoader, Dataset
 from torch_geometric.data import Data
 from tqdm import tqdm
 
 from objects.graph import build_graph
+from objects.network import GraphNeuralNet
 
 
 class HitDataset(Dataset):
-    def __init__(self, events, desc="Dataset"):
+    """
+    PyTorch Geometric dataset that converts raw events into graphs.
+
+    Graphs are built once at construction and cached in memory, so
+    build_graph only runs once per event regardless of how many epochs
+    are trained. Each graph is stored as a Pytorch Geometric Data object and served
+    to a DataLoader.
+
+    Parameters
+    ----------
+    events : list of list of TrackHit
+        One inner list per collision event, each containing all hits
+        recorded in that event.
+    desc : str, optional (default="Dataset")
+        Label shown in the tqdm progress bar during graph construction.
+    """
+
+    def __init__(self, events: list, desc: str = "Dataset"):
         self.data = []
         for hits in tqdm(events, desc=f"Building graphs ({desc})"):
             node_features, edge_index, edge_labels = build_graph(hits)
@@ -21,16 +39,39 @@ class HitDataset(Dataset):
                 Data(x=node_features, edge_index=edge_index, edge_label=edge_labels)
             )
 
-    def __len__(self):
+    def __len__(self) -> int:
+        """Return the number of events in the dataset."""
         return len(self.data)
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int) -> Data:
+        """
+        Return the pre-built graph for event idx.
+
+        Parameters
+        ----------
+        idx : int
+            Index into the dataset.
+
+        Returns
+        -------
+        torch_geometric.data.Data
+            Graph with attributes:
+              .x          — node features, shape (n_hits, 2)
+              .edge_index — candidate edges, shape (2, n_edges)
+              .edge_label — ground-truth labels, shape (n_edges,)
+        """
         return self.data[idx]
 
 
 def train_model(
-    model, train_loader, val_loader, epochs=100, lr=0.001, device="cpu", patience=15
-):
+    model: GraphNeuralNet,
+    train_loader: DataLoader,
+    val_loader: DataLoader,
+    epochs: int = 100,
+    lr: float = 1e-3,
+    device: str = "cpu",
+    patience: int = 15,
+) -> None:
     """
     Main training loop of the model
     Parameters
@@ -135,7 +176,9 @@ def train_model(
     model.plot_performance()
 
 
-def test_model(model, test_loader, device="cpu"):
+def test_model(
+    model: GraphNeuralNet, test_loader: DataLoader, device: str = "cpu"
+) -> tuple[float, float]:
     model.eval()
     model = model.to(device)
     criterion = torch.nn.BCEWithLogitsLoss()
@@ -168,7 +211,39 @@ def test_model(model, test_loader, device="cpu"):
     return loss, f1
 
 
-def get_predicted_clusters(edge_index, pred_edges, num_nodes):
+def get_predicted_clusters(
+    edge_index: torch.Tensor,
+    pred_edges: torch.Tensor,
+    num_nodes: int,
+) -> np.ndarray:
+    """
+    Convert predicted edge labels into cluster assignments via connected components.
+
+    Builds an undirected graph from the edges the model predicted as same-track
+    (pred_edges == True), then finds connected components. Each component is one
+    predicted track — hits that are transitively connected by high-confidence
+    edges end up in the same cluster.
+
+    This sidesteps the permutation problem: instead of predicting a fixed track
+    label (which has no consistent meaning across events), the model only predicts
+    pairwise same/different, and clustering recovers the groupings.
+
+    Parameters
+    ----------
+    edge_index : torch.Tensor, shape (2, n_edges)
+        Candidate edges as (source, destination) index pairs.
+    pred_edges : torch.Tensor, shape (n_edges,), dtype bool
+        Model predictions: True if the edge is predicted as same-track.
+    num_nodes : int
+        Total number of hits (nodes) in the event.
+
+    Returns
+    -------
+    np.ndarray, shape (num_nodes,), dtype int
+        Cluster ID for each node. Hits in the same connected component
+        share the same ID. IDs are arbitrary integers with no physical
+        meaning — only the grouping matters.
+    """
     G = nx.Graph()
 
     G.add_nodes_from(range(num_nodes))
@@ -189,51 +264,104 @@ def get_predicted_clusters(edge_index, pred_edges, num_nodes):
     return node_to_cluster
 
 
-def visual_example(model, graph, sample_hits, radii, device):
-    graph = next(iter(graph))
-    hits = sample_hits[0]
-    graph = graph.to(device)
+def visual_example(
+    model: GraphNeuralNet,
+    graph: DataLoader,
+    sample_hits: list,
+    radii: np.ndarray,
+    device: str,
+    n_tracks: int,
+) -> None:
+    """
+    Run the model on a single example event and save a comparison plot.
 
-    logits = model(graph)
+    Pulls one graph from the DataLoader, runs a forward pass, converts the
+    predicted edge scores into cluster assignments via connected components,
+    and calls plot_comparison to visualise ground truth alongside predictions.
+
+    Parameters
+    ----------
+    model : GraphNeuralNet
+        Trained model in eval mode.
+    graph : DataLoader
+        DataLoader wrapping a single-event HitDataset. Only the first
+        batch is used.
+    sample_hits : list of list of TrackHit
+        The raw events corresponding to the DataLoader. The first event
+        is used to extract hit positions and ground-truth track IDs.
+    radii : np.ndarray
+        Detector ring radii, passed through to plot_comparison.
+    device : str
+        Device to run inference on ("cpu" or "cuda").
+    n_tracks : int
+        Number of tracks in the event, used to label the output file as
+        <model.name>_<n_tracks>_visual_sample.png.
+    """
+    model.eval()
+    with torch.no_grad():
+        graph = next(iter(graph)).to(device)
+        logits = model(graph)
+
     probs = torch.sigmoid(logits)
     pred_edges = (probs > 0.5).cpu().numpy()
-
     pred_clusters = get_predicted_clusters(
-        graph.edge_index.cpu().numpy(), pred_edges, graph.x.size(0)
+        graph.edge_index.cpu(),  # pyright: ignore[reportAttributeAccessIssue]
+        pred_edges,  # pyright: ignore[reportArgumentType]
+        graph.x.size(0),  # pyright: ignore[reportAttributeAccessIssue, reportArgumentType]
     )
-
-    true_clusters = np.array([h.track_id for h in hits])
+    true_clusters = np.array([h.track_id for h in sample_hits[0]])
 
     plot_comparison(
-        hits, true_clusters, pred_clusters, radii, f"{model.name}_visual_sample.png"
+        sample_hits[0],
+        true_clusters,
+        pred_clusters,
+        radii,
+        f"{model.name}_{n_tracks}_visual_sample.png",
     )
 
 
-def plot_comparison(hits, true_clusters, pred_clusters, radii, file_name):
-    pos = np.array([(h.x, h.y) for h in hits])
+def plot_comparison(
+    hits: list,
+    true_clusters: np.ndarray,
+    pred_clusters: np.ndarray,
+    radii: np.ndarray,
+    file_name: str,
+) -> None:
+    """
+    Plot ground-truth and predicted track clusters side by side.
 
+    Produces a two-panel figure where each hit is coloured by its cluster
+    assignment. Comparing the panels visually shows where the model groups
+    hits correctly and where it merges or splits tracks.
+
+    Parameters
+    ----------
+    hits : list of TrackHit
+        All hits from a single event, used to extract (x, y) positions.
+    true_clusters : np.ndarray, shape (n_hits,), dtype int
+        Ground-truth cluster ID per hit, derived from track_id.
+    pred_clusters : np.ndarray, shape (n_hits,), dtype int
+        Predicted cluster ID per hit, from get_predicted_clusters.
+    radii : np.ndarray
+        Detector ring radii, used to draw the concentric circle overlays.
+    file_name : str
+        Output filename (saved to results/<file_name>).
+    """
+    pos = np.array([(h.x, h.y) for h in hits])
     fig, axes = plt.subplots(1, 2, figsize=(12, 6))
 
     for ax in axes:
-        # draw circles on BOTH axes
         for r in radii:
-            circle = plt.Circle((0, 0), r, fill=False, color="green", alpha=0.4)  # pyright: ignore[reportPrivateImportUsage]
-            ax.add_patch(circle)
-
-        # reference point
+            ax.add_patch(plt.Circle((0, 0), r, fill=False, color="green", alpha=0.4))  # pyright: ignore[reportPrivateImportUsage]
         ax.scatter([0], [0], c="black", marker="x")
-
-        # axis formatting applied to BOTH
         lim = radii[-1] * 1.2
         ax.set_xlim(-lim, lim)
         ax.set_ylim(-lim, lim)
         ax.set_aspect("equal")
 
-    # left plot: ground truth
     axes[0].scatter(pos[:, 0], pos[:, 1], c=true_clusters, cmap="tab10", s=40)
     axes[0].set_title("Ground truth")
 
-    # right plot: prediction
     axes[1].scatter(pos[:, 0], pos[:, 1], c=pred_clusters, cmap="tab10", s=40)
     axes[1].set_title("Predicted")
 

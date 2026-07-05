@@ -6,12 +6,19 @@ import numpy as np
 from objects.graph import TrackHit
 
 
-class CollisionDetector:
+class CollisionDetector2D:
     """
     Simplified Monte Carlo simulator for particle tracks and detector hits.
     """
 
-    def __init__(self, n_layers=5, r_min=1.0, r_max=10.0, n_tracks=10, random_seed=42):
+    def __init__(
+        self,
+        n_layers: int = 5,
+        r_min: float = 1.0,
+        r_max: float = 10.0,
+        n_tracks: int = 10,
+        random_seed: int = 42,
+    ) -> None:
         """
         Parameters
         ----------
@@ -30,7 +37,7 @@ class CollisionDetector:
         self.seed = random_seed
         self.rng = np.random.default_rng(self.seed)
 
-    def generate_tracks(self):
+    def generate_tracks(self) -> np.ndarray:
         """
         Generates `self.n_tracks` random track angles phi in [0, 2*pi).
 
@@ -41,7 +48,7 @@ class CollisionDetector:
 
         return self.rng.uniform(low=0.0, high=2 * np.pi, size=(self.n_tracks,))
 
-    def generate_event(self):
+    def generate_event(self) -> list[TrackHit]:
         """
         Function that:
           1. sample track angles via generate_tracks()
@@ -52,8 +59,7 @@ class CollisionDetector:
         Returns
         -------
         hits : np.ndarray, shape (n_tracks * n_layers, 2)
-            All (x, y) hit coordinates, order shuffled (a real detector
-            doesn't hand them to you pre-sorted by track!).
+            All (x, y) hit coordinates
         labels : np.ndarray, shape (n_tracks * n_layers,)
             track_id for each hit, in the same shuffled order as `hits`.
         """
@@ -80,10 +86,18 @@ class CollisionDetector:
 
         return all_hits
 
-    def plot_event(self, hits, filename, color_by_track=True):
+    def plot_event(self, hits: list[TrackHit], filename: str) -> None:
         """
         Quick visualization: detector circles + hits, optionally colored by track_id.
+
+        Parameters
+        ----------
+        hits : np.ndarray, shape (n_tracks * n_layers, 2)
+            All (x, y) hit coordinates
+        filname: str
+            Filename where to save the generated plot
         """
+
         fig, ax = plt.subplots(figsize=(6, 6))
 
         # detector circles
@@ -93,18 +107,16 @@ class CollisionDetector:
 
         # hits
         pos = np.array([(hit.x, hit.y) for hit in hits])
-        if color_by_track:
-            idx = np.array([hit.track_id for hit in hits])
-            ax.scatter(
-                pos[:, 0],
-                pos[:, 1],
-                c=idx,
-                cmap="tab10",
-                s=40,
-                zorder=3,
-            )
-        else:
-            ax.scatter(pos[:, 0], pos[:, 1], c="orange", s=40, zorder=3)
+
+        idx = np.array([hit.track_id for hit in hits])
+        ax.scatter(
+            pos[:, 0],
+            pos[:, 1],
+            c=idx,
+            cmap="tab10",
+            s=40,
+            zorder=3,
+        )
 
         ax.scatter([0], [0], c="black", marker="x", s=60, label="origin")
         ax.set_xlim(-self.radii[-1] * 1.2, self.radii[-1] * 1.2)
@@ -112,9 +124,19 @@ class CollisionDetector:
         ax.set_aspect("equal")
         ax.legend()
         plt.savefig(Path("results") / f"{filename}.png")
-        return fig, ax
 
-    def histogram_dataset(self, dataset, filename):
+    def histogram_dataset(self, dataset: list[list[TrackHit]], filename: str):
+        """
+        Quick visualization: Three historgrams of the distribution of x, y and phi of the hits on a dataset.
+
+        Parameters
+        ----------
+        Dataset : list of events (see function self.generate_event() above)
+            All (x, y) hit coordinates
+        filname: str
+            Filename where to save the generated plot
+        """
+
         all_hits = []
         all_phis = []
         for event in dataset:  # dataset is your list of TrackHit lists
@@ -137,7 +159,19 @@ class CollisionDetector:
         plt.tight_layout()
         plt.savefig(Path("results") / f"{filename}.png")
 
-    def generate_dataset(self, n_events=10000):
+    def generate_dataset(self, n_events: int = 10000) -> list[list[TrackHit]]:
+        """
+        A simple function that generates a dataset of events.
+
+        Parameters
+        ----------
+        n_events : int
+            Number of events this dataset should consist of.
+
+        Returns
+        -------
+        events : list of single-events (which is a list of hits)
+        """
         events = []
         for _ in range(n_events):
             hits = self.generate_event()
