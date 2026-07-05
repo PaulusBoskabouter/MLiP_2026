@@ -23,33 +23,25 @@ class GraphNeuralNet(nn.Module):
         self.train_f1 = []
         self.val_f1 = []
 
-        self.conv1 = SAGEConv(2, 32)
-        self.conv2 = SAGEConv(32, 32)
-        self.conv3 = SAGEConv(32, 32)
-
-        self.edge_mlp = nn.Sequential(nn.Linear(64, 32), nn.ReLU(), nn.Linear(32, 1))
+        self.conv1 = SAGEConv(2, 64)
+        self.conv2 = SAGEConv(64, 64)
+        self.conv3 = SAGEConv(64, 64)
+        self.edge_mlp = nn.Sequential(
+            nn.Linear(128, 64),
+            nn.ReLU(),
+            nn.Linear(64, 32),
+            nn.ReLU(),
+            nn.Linear(32, 1),
+        )
 
     def forward(self, graph):
-        """
-        Forward pass. Stuff goes, stuff goes out, you now how it is.
-
-        Parameters
-        ----------
-        graph : torch_geometric.data.Data
-            torch geometrical data object containing node features (x), edge indexes (edge_index), and edge labels (edge_labels)
-
-        """
-        x = graph.x
-        edge_index = graph.edge_index
-        x = F.relu(self.conv1(x, edge_index))
-        x = F.relu(self.conv2(x, edge_index))
-        x = self.conv3(x, edge_index)
-
+        x, edge_index = graph.x, graph.edge_index
+        x1 = F.relu(self.conv1(x, edge_index))
+        x2 = F.relu(self.conv2(x1, edge_index))
+        x3 = self.conv3(x2, edge_index)
+        x3 = x3 + x1
         src, dst = edge_index
-
-        edge_feat = torch.cat([x[src], x[dst]], dim=1)
-
-        return self.edge_mlp(edge_feat).squeeze(-1)
+        return self.edge_mlp(torch.cat([x3[src], x3[dst]], dim=1)).squeeze(-1)
 
     def save(self):
         """
