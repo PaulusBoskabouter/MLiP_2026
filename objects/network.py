@@ -118,12 +118,23 @@ class GraphNeuralNet(nn.Module):
 
         Both train and validation curves are shown side by side so
         overfitting is immediately visible as a divergence between the two.
+        A vertical line marks the best epoch (lowest validation loss) —
+        the checkpoint that was actually saved and used for testing.
         """
         epochs = np.arange(1, len(self.train_loss) + 1)
+        best_epoch = int(np.argmin(self.val_loss)) + 1  # +1 since epochs are 1-indexed
+
         fig, axes = plt.subplots(1, 2, figsize=(12, 4))
 
         axes[0].plot(epochs, self.train_loss, label="Train")
         axes[0].plot(epochs, self.val_loss, label="Validation")
+        axes[0].axvline(
+            best_epoch,
+            color="red",
+            linestyle="--",
+            alpha=0.7,
+            label=f"Best epoch ({best_epoch})",
+        )
         axes[0].set_xlabel("Epoch")
         axes[0].set_ylabel("BCE loss")
         axes[0].set_title("Loss throughout training")
@@ -132,6 +143,13 @@ class GraphNeuralNet(nn.Module):
 
         axes[1].plot(epochs, self.train_f1, label="Train")
         axes[1].plot(epochs, self.val_f1, label="Validation")
+        axes[1].axvline(
+            best_epoch,
+            color="red",
+            linestyle="--",
+            alpha=0.7,
+            label=f"Best epoch ({best_epoch})",
+        )
         axes[1].set_xlabel("Epoch")
         axes[1].set_ylabel("F1-score")
         axes[1].set_ylim(0, 1)
