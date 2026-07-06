@@ -1,3 +1,4 @@
+from collections import defaultdict
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -31,12 +32,19 @@ class HitDataset(Dataset):
         Label shown in the tqdm progress bar during graph construction.
     """
 
-    def __init__(self, events: list, desc: str = "Dataset"):
+    def __init__(self, events: list, desc: str = "Dataset", hits: list = []):
         self.data = []
+        track_ids = torch.tensor([h.track_id for h in hits], dtype=torch.long)
+
         for hits in tqdm(events, desc=f"Building graphs ({desc})"):
             node_features, edge_index, edge_labels = build_graph(hits)
             self.data.append(
-                Data(x=node_features, edge_index=edge_index, edge_label=edge_labels)
+                Data(
+                    x=node_features,
+                    edge_index=edge_index,
+                    edge_label=edge_labels,
+                    track_id=track_ids,  # ← add this
+                )
             )
 
     def __len__(self) -> int:
@@ -179,36 +187,127 @@ def train_model(
 def test_model(
     model: GraphNeuralNet, test_loader: DataLoader, device: str = "cpu"
 ) -> tuple[float, float]:
+    """
+    Evaluate the model on a held-out test set.
+
+    Computes three metrics:
+      - BCE loss: edge-level loss averaged over all batches.
+      - F1 score: edge-level, comparing predicted same/different-track
+        labels against ground truth.
+
+    Parameters
+    ----------
+    model : GraphNeuralNet
+        Trained model to evaluate.
+    test_loader : DataLoader
+        DataLoader wrapping the test HitDataset.
+    device : str, optional (default="cpu")
+        Device to run inference on.
+
+    Returns
+    -------
+    loss : float
+        Average BCE loss over the test set.
+    f1 : float
+        Edge-level F1 score over the test set.
+
+    """
     model.eval()
     model = model.to(device)
     criterion = torch.nn.BCEWithLogitsLoss()
-
     running_loss = 0
     all_preds = []
     all_targets = []
-
     with torch.no_grad():
         for graph in test_loader:
             graph = graph.to(device)
-
             pred = model(graph)
             loss = criterion(pred, graph.edge_label.float())
             running_loss += loss.item()
-
             probs = torch.sigmoid(pred)
             pred_labels = (probs >= 0.5).float()
-
             all_preds.append(pred_labels.cpu())
             all_targets.append(graph.edge_label.cpu())
-
     # ---------- metrics ----------
     all_preds = torch.cat(all_preds).numpy()
     all_targets = torch.cat(all_targets).numpy()
-
     loss = running_loss / len(test_loader)
     f1 = f1_score(all_targets, all_preds)
-
     return loss, f1
+
+
+def hit_accuracy(
+    model: GraphNeuralNet,
+    events: list,
+    device: str = "cpu",
+) -> float:
+    """
+    Compute track reconstruction accuracy across all events.
+
+    For each true track, finds the predicted cluster with the most overlap,
+    then counts how many hits match. Any missing hit (in the true track but
+    not in the predicted cluster) or extra hit (in the predicted cluster but
+    belonging to a different track) counts as one mistake.
+
+    Score per track = (hits in true track) - (missing hits) - (extra hits)
+    clamped to 0. Final accuracy is the sum of per-track scores divided by
+    the total number of hits across all events.
+
+    Parameters
+    ----------
+    model : GraphNeuralNet
+        Trained model in eval mode.
+    events : list of list of TrackHit
+        Raw events with ground-truth track_id on each hit.
+    device : str, optional (default="cpu")
+        Device to run inference on.
+
+    Returns
+    -------
+    float
+        Fraction of hits correctly reconstructed, in [0, 1].
+    """
+    model.eval()
+    total_score = 0
+    total_hits = 0
+
+    with torch.no_grad():
+        for hits in events:
+            node_features, edge_index, edge_attr = build_graph(hits)
+            graph = Data(
+                x=node_features, edge_index=edge_index, edge_attr=edge_attr
+            ).to(device)
+            logits = model(graph)
+
+            pred_edges = (torch.sigmoid(logits) >= 0.5).cpu().numpy()
+            pred_clusters = get_predicted_clusters(
+                edge_index.numpy(), pred_edges, len(hits)
+            )
+            true_track_ids = np.array([h.track_id for h in hits], dtype=int)
+
+            # group node indices by true track and predicted cluster
+            true_tracks = defaultdict(set)
+            pred_tracks = defaultdict(set)
+            for node_idx, (true_id, pred_id) in enumerate(
+                zip(true_track_ids, pred_clusters)
+            ):
+                true_tracks[true_id].add(node_idx)
+                pred_tracks[pred_id].add(node_idx)
+
+            # for each true track, find the best matching predicted cluster
+            for true_id, true_nodes in true_tracks.items():
+                best_score = 0
+                for pred_id, pred_nodes in pred_tracks.items():
+                    correct = len(true_nodes & pred_nodes)  # hits in both
+                    missing = len(true_nodes - pred_nodes)  # hits the model missed
+                    extra = len(pred_nodes - true_nodes)  # hits that don't belong
+                    score = correct - missing - extra
+                    best_score = max(best_score, score)
+
+                total_score += max(0, best_score)
+                total_hits += len(true_nodes)
+
+    return total_score / total_hits if total_hits > 0 else 0.0
 
 
 def get_predicted_clusters(
@@ -367,3 +466,64 @@ def plot_comparison(
 
     plt.tight_layout()
     plt.savefig(Path("results") / file_name)
+
+
+def export_predictions(
+    model: GraphNeuralNet,
+    events: list,
+    event_ids: list,
+    device: str = "cpu",
+    filename: str = "predictions.csv",
+) -> None:
+    """
+    Run the model over a set of events and write predictions to a CSV file.
+
+    Each line contains the event ID followed by hit data in the format:
+        event_id, x1, y1, pred_track_id_1, x2, y2, pred_track_id_2, ...
+
+    The predicted track ID for each hit is the connected-component cluster
+    ID assigned by get_predicted_clusters — arbitrary integers with no
+    physical meaning, but consistent within each event.
+
+    Parameters
+    ----------
+    model : GraphNeuralNet
+        Trained model in eval mode.
+    events : list of list of TrackHit
+        Raw events to run inference on.
+    event_ids : list of int
+        Corresponding event IDs, matched by index to events.
+    device : str, optional (default="cpu")
+        Device to run inference on.
+    filename : str, optional (default="predictions.csv")
+        Output filename, written to the results/ directory.
+    """
+    model.eval()
+    model = model.to(device)
+
+    rows = []
+    with torch.no_grad():
+        for event_id, hits in tqdm(
+            zip(event_ids, events), total=len(events), desc="Exporting predictions"
+        ):
+            node_features, edge_index, edge_attr = build_graph(hits)
+            graph = Data(
+                x=node_features, edge_index=edge_index, edge_attr=edge_attr
+            ).to(device)
+
+            logits = model(graph)
+            pred_edges = (torch.sigmoid(logits) >= 0.5).cpu().numpy()
+            clusters = get_predicted_clusters(edge_index.numpy(), pred_edges, len(hits))  # pyright: ignore[reportArgumentType]
+
+            # build the row: event_id, x1, y1, pred_tid_1, x2, y2, pred_tid_2, ...
+            row = [event_id]
+            for hit, cluster_id in zip(hits, clusters):
+                row += [hit.x, hit.y, cluster_id]
+            rows.append(row)
+
+    output_path = Path("results") / filename
+    with open(output_path, "w") as f:
+        for row in rows:
+            f.write(", ".join(str(v) for v in row) + "\n")
+
+    print(f"Predictions written to {output_path}")

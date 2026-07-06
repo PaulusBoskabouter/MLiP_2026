@@ -36,7 +36,7 @@ class GraphNeuralNet(nn.Module):
         self.val_loss: list = []
         self.train_f1: list = []
         self.val_f1: list = []
-        self.conv1 = SAGEConv(2, 64)
+        self.conv1 = SAGEConv(3, 64)
         self.conv2 = SAGEConv(64, 64)
         self.conv3 = SAGEConv(64, 64)
         self.edge_mlp = nn.Sequential(
@@ -59,7 +59,7 @@ class GraphNeuralNet(nn.Module):
         ----------
         graph : torch_geometric.data.Data
             A single graph or a PyG batch. Expected attributes:
-              graph.x          — node features, shape (n_hits, 2)
+              graph.x          — node features, shape (n_hits, 3)
               graph.edge_index — candidate edges, shape (2, n_edges)
 
         Returns

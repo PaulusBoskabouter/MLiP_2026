@@ -87,8 +87,14 @@ def build_graph(
     r_max = np.sqrt(xs**2 + ys**2).max()
     r_max = r_max if r_max > 0 else 1.0
 
-    node_features = np.stack([xs / r_max, ys / r_max], axis=1).astype(np.float32)
-
+    node_features = np.stack(
+        [
+            xs / r_max,
+            ys / r_max,
+            rings / rings.max(),
+        ],
+        axis=1,
+    ).astype(np.float32)
     # Group hit indices by ring for fast lookup
     ring_to_idxs = defaultdict(list)
     for idx, ring in enumerate(rings):

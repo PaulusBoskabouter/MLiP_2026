@@ -14,7 +14,7 @@ class CollisionDetector2D:
     def __init__(
         self,
         n_layers: int = 5,
-        r_min: float = 1.0,
+        r_min: float = 2.0,
         r_max: float = 10.0,
         n_tracks: int = 10,
         random_seed: int = 42,
