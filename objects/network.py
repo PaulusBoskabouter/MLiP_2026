@@ -124,7 +124,7 @@ class GraphNeuralNet(nn.Module):
         epochs = np.arange(1, len(self.train_loss) + 1)
         best_epoch = int(np.argmin(self.val_loss)) + 1  # +1 since epochs are 1-indexed
 
-        fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+        fig, axes = plt.subplots(1, 2, figsize=(8, 4))
 
         axes[0].plot(epochs, self.train_loss, label="Train")
         axes[0].plot(epochs, self.val_loss, label="Validation")
