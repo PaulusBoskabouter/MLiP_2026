@@ -447,7 +447,7 @@ def plot_comparison(
         Output filename (saved to results/<file_name>).
     """
     pos = np.array([(h.x, h.y) for h in hits])
-    fig, axes = plt.subplots(1, 2, figsize=(12, 6))
+    fig, axes = plt.subplots(2, 1, figsize=(8, 16))
 
     for ax in axes:
         for r in radii:
@@ -457,12 +457,13 @@ def plot_comparison(
         ax.set_xlim(-lim, lim)
         ax.set_ylim(-lim, lim)
         ax.set_aspect("equal")
+        ax.tick_params(axis="both", labelsize=16)
 
     axes[0].scatter(pos[:, 0], pos[:, 1], c=true_clusters, cmap="tab10", s=40)
-    axes[0].set_title("Ground truth")
+    axes[0].set_title("Ground truth", fontsize=20)
 
     axes[1].scatter(pos[:, 0], pos[:, 1], c=pred_clusters, cmap="tab10", s=40)
-    axes[1].set_title("Predicted")
+    axes[1].set_title("Predicted", fontsize=20)
 
     plt.tight_layout()
     plt.savefig(Path("results") / file_name)
