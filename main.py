@@ -87,18 +87,18 @@ def run_experiment(
 
 def model_linear_tracks(seed, train, epochs, lr, patience, batch_size, n_tracks):
     print("-" * 100)
-    detector = CollisionDetector2D()
+    detector = CollisionDetector2D(n_tracks=n_tracks)
     detector.plot_event(
         detector.generate_event(),
         filename=f"example_{n_tracks}_tracks",
     )
 
-    data = detector.generate_dataset(n_events=10_000)
-    detector.histogram_dataset(data, f"distribution_{n_tracks}_tracks")
-    print(f"Generated {len(data)} events with {n_tracks} tracks.")
+    events = detector.generate_dataset(n_events=10_000)
+    detector.histogram_dataset(events, f"distribution_{n_tracks}_tracks")
+    print(f"Generated {len(events)} events with {n_tracks} tracks.")
 
     run_experiment(
-        data,
+        events,
         "GNN_linear_tracks",
         detector,
         train,
@@ -151,7 +151,7 @@ def model_curved_tracks(seed, train, epochs, lr, patience, batch_size):
 if __name__ == "__main__":
     # HYPERPARAMETERS:
     seed = 42
-    train = True
+    train = False  # Set to true if you want to retrain models.
     epochs = 1000
     lr = 0.001
     patience = 50
@@ -160,14 +160,14 @@ if __name__ == "__main__":
     # Training and evaluating the model with 10 tracks
     model_linear_tracks(
         seed=seed,
-        train=True,
+        train=train,
         epochs=epochs,
         lr=lr,
         patience=patience,
         batch_size=batch_size,
         n_tracks=10,
     )
-    # # Evaluating the model with 50 tracks
+    # Evaluating the model with 50 tracks
     model_linear_tracks(
         seed=seed,
         train=False,
